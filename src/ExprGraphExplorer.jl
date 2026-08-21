@@ -251,11 +251,16 @@ function _positions(order; width=1100, height=560)
     return positions, depth
 end
 
-function render_svg(graph::ExprGraph, frame::Frame; width=1100, height=620, exam=false)
+function render_svg(graph::ExprGraph, frame::Frame; width=1100, height=620, exam=false, responsive=true)
     order = topological_order(graph.output)
     positions, depth = _positions(order; width, height=height - 60)
     io = IOBuffer()
-    println(io, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"0 0 $width $height\">")
+    dimensions = if responsive
+        "width=\"100%\" viewBox=\"0 0 $width $height\" preserveAspectRatio=\"xMidYMid meet\" style=\"display:block;height:auto\""
+    else
+        "width=\"$width\" height=\"$height\" viewBox=\"0 0 $width $height\""
+    end
+    println(io, "<svg xmlns=\"http://www.w3.org/2000/svg\" $dimensions>")
     println(io, "<defs><marker id=\"arrow\" markerWidth=\"10\" markerHeight=\"10\" refX=\"9\" refY=\"3\" orient=\"auto\"><path d=\"M0,0 L0,6 L9,3 z\" fill=\"#667085\"/></marker></defs>")
     println(io, "<rect width=\"100%\" height=\"100%\" fill=\"white\"/>")
     exam || println(io, "<text x=\"$(width / 2)\" y=\"30\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"21\" font-weight=\"bold\">$(_escape(frame.title))</text>")
@@ -289,9 +294,9 @@ function render_svg(graph::ExprGraph, frame::Frame; width=1100, height=620, exam
     return String(take!(io))
 end
 
-function save_svg(path, graph::ExprGraph, frame::Frame; kwargs...)
+function save_svg(path, graph::ExprGraph, frame::Frame; responsive=false, kwargs...)
     open(path, "w") do io
-        write(io, render_svg(graph, frame; kwargs...))
+        write(io, render_svg(graph, frame; responsive, kwargs...))
     end
     return path
 end

@@ -15,7 +15,11 @@ EmptyMetadata(::Any) = EmptyMetadata()
     graph = ExprGraph(output; names=IdDict(x => "x", y => "y"))
     states = forward_frames(graph)
     @test length(states) == 6
-    @test occursin("<svg", render_svg(graph, states[end]))
+    svg = render_svg(graph, states[end])
+    @test occursin("<svg", svg)
+    @test occursin("width=\"100%\"", svg)
+    @test occursin("viewBox=\"0 0 1100 620\"", svg)
+    @test occursin("width=\"1100\" height=\"620\"", render_svg(graph, states[end]; responsive=false))
 end
 
 @testset "small array value union" begin

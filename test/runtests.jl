@@ -20,9 +20,12 @@ EmptyMetadata(::Any) = EmptyMetadata()
     @test length(states) == 6
     svg = render_svg(graph, states[end])
     @test occursin("<svg", svg)
+    @test occursin("xmlns:xlink=\"http://www.w3.org/1999/xlink\"", svg)
     @test occursin("width=\"100%\"", svg)
     @test occursin("viewBox=\"0 0 1100 620\"", svg)
     @test occursin("width=\"1100\" height=\"620\"", render_svg(graph, states[end]; responsive=false))
+    @test ExprGraphExplorer._fmt([1.0, 2.0]) == "[1, 2]"
+    @test ExprGraphExplorer._fmt([1.0 2.0; 3.0 4.0]) == "[1 2; 3 4]"
 end
 
 @testset "small array value union" begin

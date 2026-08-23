@@ -337,23 +337,7 @@ function _draw_graph(
         startx, endx = x1 + 68, x2 - 72
         start = Luxor.Point(startx, y1)
         finish = Luxor.Point(endx, y2)
-        if depth[node] - depth[arg] > 1
-            controlx = (startx + endx) / 2
-            controly = y1 == y2 ? y1 + 120 : min(y1, y2) - 100
-            control = Luxor.Point(controlx, controly)
-            first_control = start + (control - start) * (2 / 3)
-            second_control = finish + (control - finish) * (2 / 3)
-            Luxor.arrow(
-                start,
-                first_control,
-                second_control,
-                finish;
-                linewidth = 2.5,
-                arrowheadlength = 10,
-            )
-        else
-            Luxor.arrow(start, finish; linewidth = 2.5, arrowheadlength = 10)
-        end
+        Luxor.arrow(start, finish; linewidth = 2.5, arrowheadlength = 10)
     end
     for node in order
         x, y = positions[node]

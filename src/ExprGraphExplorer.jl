@@ -256,7 +256,17 @@ function _matrix_image(value::AbstractMatrix)
     key = _fmt(value)
     return get!(_matrix_image_cache, key) do
         matrix = Typstry.TypstString(value; mode = Typstry.markup, delim = "[")
-        return Luxor.text(matrix, Luxor.O; place = false, preamble = _typst_preamble)
+        io = IOBuffer()
+        show(IOContext(io, :preamble => _typst_preamble), "image/svg+xml", matrix)
+        svg = String(take!(io))
+        # Typst exports its page as an opaque white path even with `fill: none`.
+        # The page is only a container here, so remove it before compositing.
+        svg = replace(
+            svg,
+            r"\n\s*<path class=\"typst-shape\" fill=\"#ffffff\"[^>]*/>" => "";
+            count = 1,
+        )
+        return Luxor.readsvg(svg)
     end
 end
 

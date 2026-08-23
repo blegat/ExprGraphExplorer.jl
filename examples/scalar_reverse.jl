@@ -19,7 +19,7 @@ end
 
 const ScalarNode = ExprNode{Float64,ScalarReverseData}
 
-function example(; x=2.0, y=3.0)
+function example(; x = 2.0, y = 3.0)
     xnode = ScalarNode(x)
     ynode = ScalarNode(y)
     s1 = xnode * ynode
@@ -86,19 +86,18 @@ function frames(graph::ExprGraph)
         node.metadata.derivative = 0.0
     end
     graph.output.metadata.derivative = 1.0
-    push!(result, capture_frame(
-        graph,
-        "Reverse pass: seed f̄ = 1";
-        active=graph.output,
-    ))
+    push!(result, capture_frame(graph, "Reverse pass: seed f̄ = 1"; active = graph.output))
     for node in reverse(order)
         isempty(node.args) && continue
         _backward!(node)
-        push!(result, capture_frame(
-            graph,
-            "Reverse pass: propagate from $(graph.names[node])";
-            active=node,
-        ))
+        push!(
+            result,
+            capture_frame(
+                graph,
+                "Reverse pass: propagate from $(graph.names[node])";
+                active = node,
+            ),
+        )
     end
     return result
 end

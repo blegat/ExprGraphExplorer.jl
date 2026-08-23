@@ -4,6 +4,8 @@
 module ExprGraphExplorer
 
 import LinearAlgebra
+import Luxor
+import Typstry
 
 export ExprNode,
     ExprGraph,
@@ -132,20 +134,20 @@ Base.isless(x::ExprNode, y) = isless(x.value, y isa ExprNode ? y.value : y)
 Base.isless(x, y::ExprNode) = isless(x isa ExprNode ? x.value : x, y.value)
 Base.isless(x::ExprNode, y::ExprNode) = isless(x.value, y.value)
 
-function Base.sum(x::N; dims=:) where {N<:ExprNode}
+function Base.sum(x::N; dims = :) where {N<:ExprNode}
     if dims === Colon()
         return N(:sum, N[x], sum(x.value))
     end
     dim = N(Float64(only(dims isa Integer ? (dims,) : Tuple(dims))))
-    return N(:sum_dims, N[x, dim], sum(x.value; dims=Int(dim.value)))
+    return N(:sum_dims, N[x, dim], sum(x.value; dims = Int(dim.value)))
 end
 
-function Base.maximum(x::N; dims=:) where {N<:ExprNode}
+function Base.maximum(x::N; dims = :) where {N<:ExprNode}
     if dims === Colon()
         return N(:maximum, N[x], maximum(x.value))
     end
     dim = N(Float64(only(dims isa Integer ? (dims,) : Tuple(dims))))
-    return N(:maximum_dims, N[x, dim], maximum(x.value; dims=Int(dim.value)))
+    return N(:maximum_dims, N[x, dim], maximum(x.value; dims = Int(dim.value)))
 end
 
 function LinearAlgebra.adjoint(x::N) where {N<:ExprNode}
@@ -179,7 +181,10 @@ struct ExprGraph{T,M}
     names::IdDict{ExprNode{T,M},String}
 end
 
-function ExprGraph(output::ExprNode{T,M}; names=IdDict{ExprNode{T,M},String}()) where {T,M}
+function ExprGraph(
+    output::ExprNode{T,M};
+    names = IdDict{ExprNode{T,M},String}(),
+) where {T,M}
     order = topological_order(output)
     generated = IdDict{ExprNode{T,M},String}()
     for (index, node) in enumerate(order)
@@ -198,14 +203,15 @@ end
 function capture_frame(
     graph::ExprGraph{T,M},
     title::AbstractString;
-    active=nothing,
-    visible=Set(topological_order(graph.output)),
-    show_metadata=true,
+    active = nothing,
+    visible = Set(topological_order(graph.output)),
+    show_metadata = true,
 ) where {T,M}
     values = IdDict(node => node in visible for node in topological_order(graph.output))
     rows = IdDict{ExprNode{T,M},Vector{Pair{String,String}}}()
     for node in topological_order(graph.output)
-        rows[node] = show_metadata ? copy(metadata_rows(node.metadata)) : Pair{String,String}[]
+        rows[node] =
+            show_metadata ? copy(metadata_rows(node.metadata)) : Pair{String,String}[]
     end
     return Frame{T,M}(String(title), active, values, rows)
 end
@@ -214,35 +220,68 @@ function forward_frames(graph::ExprGraph)
     order = topological_order(graph.output)
     result = Frame[]
     visible = Set{eltype(order)}()
-    push!(result, capture_frame(graph, "Expression graph"; visible, show_metadata=false))
+    push!(result, capture_frame(graph, "Expression graph"; visible, show_metadata = false))
     for node in order
         push!(visible, node)
-        push!(result, capture_frame(
-            graph,
-            "Forward pass: evaluate $(graph.names[node])";
-            active=node,
-            visible,
-            show_metadata=false,
-        ))
+        push!(
+            result,
+            capture_frame(
+                graph,
+                "Forward pass: evaluate $(graph.names[node])";
+                active = node,
+                visible,
+                show_metadata = false,
+            ),
+        )
     end
     return result
 end
 
-_fmt(x::Number) = isinteger(x) ? string(Int(x)) : string(round(x; digits=3))
+_fmt(x::Number) = isinteger(x) ? string(Int(x)) : string(round(x; digits = 3))
+_fmt(x::AbstractVector) = "[" * join(_fmt.(x), ", ") * "]"
+function _fmt(x::AbstractMatrix)
+    length(x) > 16 && return string(summary(x))
+    rows = (join((_fmt(x[i, j]) for j in axes(x, 2)), " ") for i in axes(x, 1))
+    return "[" * join(rows, "; ") * "]"
+end
 _fmt(x) = string(summary(x))
-_escape(s) = replace(string(s), "&" => "&amp;", "<" => "&lt;", ">" => "&gt;")
+
+const _typst_preamble = Typstry.TypstString(
+    Typstry.TypstText(
+        "#set page(width: auto, height: auto, margin: 0pt, fill: none); #set text(size: 14pt);",
+    ),
+)
+const _matrix_image_cache = Dict{String,Luxor.SVGimage}()
+function _matrix_image(value::AbstractMatrix)
+    key = _fmt(value)
+    return get!(_matrix_image_cache, key) do
+        matrix = Typstry.TypstString(value; mode = Typstry.markup, delim = "[")
+        io = IOBuffer()
+        show(IOContext(io, :preamble => _typst_preamble), "image/svg+xml", matrix)
+        svg = String(take!(io))
+        # Typst exports its page as an opaque white path even with `fill: none`.
+        # The page is only a container here, so remove it before compositing.
+        svg = replace(
+            svg,
+            r"\n\s*<path class=\"typst-shape\" fill=\"#ffffff\"[^>]*/>" => "";
+            count = 1,
+        )
+        return Luxor.readsvg(svg)
+    end
+end
 
 function _depth!(depth, node)
     haskey(depth, node) && return depth[node]
-    depth[node] = isempty(node.args) ? 0 : 1 + maximum(_depth!(depth, arg) for arg in node.args)
+    depth[node] =
+        isempty(node.args) ? 0 : 1 + maximum(_depth!(depth, arg) for arg in node.args)
 end
 
-function _positions(order; width=1100, height=560)
+function _positions(order; width = 1100, height = 560)
     depth = IdDict{eltype(order),Int}()
     foreach(node -> _depth!(depth, node), order)
     maxdepth = maximum(values(depth))
     positions = IdDict{eltype(order),Tuple{Float64,Float64}}()
-    for d in 0:maxdepth
+    for d = 0:maxdepth
         level = [node for node in order if depth[node] == d]
         for (index, node) in enumerate(level)
             positions[node] = (
@@ -254,69 +293,164 @@ function _positions(order; width=1100, height=560)
     return positions, depth
 end
 
-function render_svg(graph::ExprGraph, frame::Frame; width=1100, height=620, exam=false, responsive=true)
+function _draw_matrix_value(value, point)
+    image = _matrix_image(value)
+    Luxor.fontface("sans-serif")
+    Luxor.fontsize(15)
+    prefix = "value ="
+    prefix_width = Luxor.textextents(prefix)[5]
+    gap = 5
+    total_width = prefix_width + gap + image.width
+    left = point.x - total_width / 2
+    Luxor.text(prefix, Luxor.Point(left, point.y); halign = :left, valign = :middle)
+    Luxor.placeimage(
+        image,
+        Luxor.Point(left + prefix_width + gap, point.y - image.height / 2),
+    )
+end
+
+function _draw_graph(
+    graph::ExprGraph,
+    frame::Frame;
+    width = 1100,
+    height = 620,
+    exam = false,
+)
     order = topological_order(graph.output)
-    positions, depth = _positions(order; width, height=height - 60)
-    io = IOBuffer()
-    dimensions = if responsive
-        "width=\"100%\" viewBox=\"0 0 $width $height\" preserveAspectRatio=\"xMidYMid meet\" style=\"display:block;height:auto\""
-    else
-        "width=\"$width\" height=\"$height\" viewBox=\"0 0 $width $height\""
+    positions, depth = _positions(order; width, height = height - 60)
+    Luxor.background("white")
+    if !exam
+        Luxor.sethue("black")
+        Luxor.fontface("DejaVu Sans Bold")
+        Luxor.fontsize(21)
+        Luxor.text(
+            frame.title,
+            Luxor.Point(width / 2, 30);
+            halign = :center,
+            valign = :middle,
+        )
     end
-    println(io, "<svg xmlns=\"http://www.w3.org/2000/svg\" $dimensions>")
-    println(io, "<defs><marker id=\"arrow\" markerWidth=\"10\" markerHeight=\"10\" refX=\"9\" refY=\"3\" orient=\"auto\"><path d=\"M0,0 L0,6 L9,3 z\" fill=\"#667085\"/></marker></defs>")
-    println(io, "<rect width=\"100%\" height=\"100%\" fill=\"white\"/>")
-    exam || println(io, "<text x=\"$(width / 2)\" y=\"30\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"21\" font-weight=\"bold\">$(_escape(frame.title))</text>")
+    Luxor.sethue("#667085")
     for node in order, arg in node.args
-        x1, y1 = positions[arg]; x2, y2 = positions[node]
+        x1, y1 = positions[arg]
+        x2, y2 = positions[node]
         startx, endx = x1 + 68, x2 - 72
-        if depth[node] - depth[arg] > 1
-            controlx = (startx + endx) / 2
-            controly = y1 == y2 ? y1 + 120 : min(y1, y2) - 100
-            println(io, "<path d=\"M $startx $y1 Q $controlx $controly $endx $y2\" fill=\"none\" stroke=\"#667085\" stroke-width=\"2.5\" marker-end=\"url(#arrow)\"/>")
-        else
-            println(io, "<line x1=\"$startx\" y1=\"$y1\" x2=\"$endx\" y2=\"$y2\" stroke=\"#667085\" stroke-width=\"2.5\" marker-end=\"url(#arrow)\"/>")
-        end
+        start = Luxor.Point(startx, y1)
+        finish = Luxor.Point(endx, y2)
+        Luxor.arrow(start, finish; linewidth = 2.5, arrowheadlength = 10)
     end
     for node in order
         x, y = positions[node]
+        center = Luxor.Point(x, y)
         active = node === frame.active
         fill = active ? "#fef0c7" : (isnothing(node.op) ? "#e0f2fe" : "#f2f4f7")
         stroke = active ? "#f79009" : "#344054"
-        println(io, "<rect x=\"$(x-68)\" y=\"$(y-42)\" width=\"136\" height=\"84\" rx=\"12\" fill=\"$fill\" stroke=\"$stroke\" stroke-width=\"$(active ? 4 : 2)\"/>")
+        Luxor.sethue(fill)
+        Luxor.box(center, 136, 84, 12, :fill)
+        Luxor.sethue(stroke)
+        Luxor.setline(active ? 4 : 2)
+        Luxor.box(center, 136, 84, 12, :stroke)
         op = isnothing(node.op) ? "input" : string(node.op)
-        println(io, "<text x=\"$x\" y=\"$(y-15)\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"19\" font-weight=\"bold\">$(_escape(graph.names[node]))  [$(_escape(op))]</text>")
-        value = frame.values[node] ? _fmt(node.value) : "?"
-        println(io, "<text x=\"$x\" y=\"$(y+13)\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"17\">value = $(_escape(value))</text>")
+        Luxor.sethue("black")
+        Luxor.fontface("DejaVu Sans Bold")
+        Luxor.fontsize(19)
+        Luxor.text(
+            "$(graph.names[node])  [$op]",
+            Luxor.Point(x, y - 15);
+            halign = :center,
+            valign = :middle,
+        )
+        if frame.values[node] && node.value isa AbstractMatrix && length(node.value) <= 16
+            _draw_matrix_value(node.value, Luxor.Point(x, y + 13))
+            value_y = y + 13
+        else
+            value = frame.values[node] ? _fmt(node.value) : "?"
+            Luxor.fontface("sans-serif")
+            Luxor.fontsize(17)
+            Luxor.text(
+                "value = $value",
+                Luxor.Point(x, y + 13);
+                halign = :center,
+                valign = :middle,
+            )
+            value_y = y + 13
+        end
         exam && continue
         for (index, row) in enumerate(frame.metadata[node])
-            println(io, "<text x=\"$x\" y=\"$(y+13+21index)\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"16\" fill=\"#175cd3\">$(_escape(row.first)) = $(_escape(row.second))</text>")
+            metadata_y = value_y + 21index
+            Luxor.sethue("#175cd3")
+            Luxor.fontsize(16)
+            Luxor.text(
+                "$(row.first) = $(row.second)",
+                Luxor.Point(x, metadata_y);
+                halign = :center,
+                valign = :middle,
+            )
         end
     end
-    println(io, "</svg>")
-    return String(take!(io))
 end
 
-function save_svg(path, graph::ExprGraph, frame::Frame; responsive=false, kwargs...)
-    open(path, "w") do io
-        write(io, render_svg(graph, frame; responsive, kwargs...))
+function _render(
+    graph,
+    frame,
+    surface;
+    width = 1100,
+    height = 620,
+    exam = false,
+    path = "",
+    scale = 1.0,
+)
+    canvas_width = surface == :png ? round(Int, scale * width) : scale * width
+    canvas_height = surface == :png ? round(Int, scale * height) : scale * height
+    drawing = Luxor.Drawing(canvas_width, canvas_height, surface, path)
+    Luxor.scale(scale)
+    _draw_graph(graph, frame; width, height, exam)
+    Luxor.finish()
+    return drawing
+end
+
+function render_svg(
+    graph::ExprGraph,
+    frame::Frame;
+    width = 1100,
+    height = 620,
+    exam = false,
+    responsive = true,
+)
+    _render(graph, frame, :svg; width, height, exam)
+    svg = Luxor.svgstring()
+    if responsive
+        root = "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" width=\"100%\" viewBox=\"0 0 $width $height\" preserveAspectRatio=\"xMidYMid meet\" style=\"display:block;height:auto\">"
+        svg = replace(svg, r"<svg[^>]*>" => root; count = 1)
+    end
+    return svg
+end
+
+function save_svg(path, graph::ExprGraph, frame::Frame; responsive = false, kwargs...)
+    if responsive
+        write(path, render_svg(graph, frame; responsive, kwargs...))
+    else
+        _render(graph, frame, :svg; path, kwargs...)
     end
     return path
 end
 
-function save_png(path, graph::ExprGraph, frame::Frame; density=180, width=1600, kwargs...)
-    mktempdir() do directory
-        source = save_svg(joinpath(directory, "graph.svg"), graph, frame; kwargs...)
-        run(`magick -density $density -background white $source -resize $(width)x $path`)
-    end
+function save_png(
+    path,
+    graph::ExprGraph,
+    frame::Frame;
+    density = 180,
+    width = 1600,
+    height = 620,
+    exam = false,
+)
+    scale = width / 1100
+    _render(graph, frame, :png; width = 1100, height, exam, path, scale)
     return path
 end
 
 function save_eps(path, graph::ExprGraph, frame::Frame; kwargs...)
-    mktempdir() do directory
-        source = save_svg(joinpath(directory, "graph.svg"), graph, frame; kwargs...)
-        run(`inkscape $source --export-type=eps --export-filename=$path`)
-    end
+    _render(graph, frame, :eps; path, kwargs...)
     return path
 end
 

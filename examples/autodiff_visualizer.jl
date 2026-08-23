@@ -50,12 +50,12 @@ adjoints during the reverse pass.
 
 # ╔═╡ 5b4aeff2-1c64-433b-98da-b10dcbd03290
 begin
-    graph = ScalarReverseExample.example(x=2, y=3)
+    graph = ScalarReverseExample.example(x = 2, y = 3)
     states = ScalarReverseExample.frames(graph)
 end
 
 # ╔═╡ ca498fc8-0917-4a97-bac0-1224ab2e2365
-@bind step Slider(eachindex(states); default=1, show_value=true)
+@bind step Slider(eachindex(states); default = 1, show_value = true)
 
 # ╔═╡ 5b273195-e5f2-4e82-846c-53db223652ac
 HTML(render_svg(graph, states[step]))

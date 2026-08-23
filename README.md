@@ -35,5 +35,6 @@ y = MyNode(3.0)
 graph = ExprGraph(x * y; names=IdDict(x => "x", y => "y"))
 ```
 
-The core SVG renderer has no external dependency. The optional `save_png` and
-`save_eps` helpers call ImageMagick and Inkscape respectively.
+Rendering and SVG, PNG, and EPS export use Luxor and its Cairo artifact. Small
+matrix values are typeset by Typstry and its Typst artifact. No separately
+installed graphics or typesetting executable is required.

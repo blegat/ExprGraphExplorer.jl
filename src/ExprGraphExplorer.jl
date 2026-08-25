@@ -251,13 +251,14 @@ const _typst_preamble = Typstry.TypstString(
         "#set page(width: auto, height: auto, margin: 0pt, fill: none); #set text(size: 14pt);",
     ),
 )
-const _matrix_image_cache = Dict{String,Luxor.SVGimage}()
-function _matrix_image(value::AbstractMatrix)
-    key = _fmt(value)
-    return get!(_matrix_image_cache, key) do
-        matrix = Typstry.TypstString(value; mode = Typstry.markup, delim = "[")
+const _array_image_cache = Dict{String,Luxor.SVGimage}()
+function _array_image(value::Union{AbstractVector,AbstractMatrix})
+    key = string(typeof(value), ':', _fmt(value))
+    return get!(_array_image_cache, key) do
+        displayed = value isa AbstractVector ? reshape(value, :, 1) : value
+        array = Typstry.TypstString(displayed; mode = Typstry.markup, delim = "[")
         io = IOBuffer()
-        show(IOContext(io, :preamble => _typst_preamble), "image/svg+xml", matrix)
+        show(IOContext(io, :preamble => _typst_preamble), "image/svg+xml", array)
         svg = String(take!(io))
         # Typst exports its page as an opaque white path even with `fill: none`.
         # The page is only a container here, so remove it before compositing.
@@ -276,7 +277,7 @@ function _depth!(depth, node)
         isempty(node.args) ? 0 : 1 + maximum(_depth!(depth, arg) for arg in node.args)
 end
 
-function _positions(order; width = 1100, height = 560)
+function _positions(order; width = 1100, height = 560, compact = false)
     depth = IdDict{eltype(order),Int}()
     foreach(node -> _depth!(depth, node), order)
     maxdepth = maximum(values(depth))
@@ -284,17 +285,22 @@ function _positions(order; width = 1100, height = 560)
     for d = 0:maxdepth
         level = [node for node in order if depth[node] == d]
         for (index, node) in enumerate(level)
+            y = if compact
+                height / 2 + (index - (length(level) + 1) / 2) * 110
+            else
+                index * height / (length(level) + 1)
+            end
             positions[node] = (
                 100 + d * (width - 200) / max(maxdepth, 1),
-                index * height / (length(level) + 1),
+                y,
             )
         end
     end
     return positions, depth
 end
 
-function _draw_matrix_value(value, point)
-    image = _matrix_image(value)
+function _draw_array_value(value, point)
+    image = _array_image(value)
     Luxor.fontface("sans-serif")
     Luxor.fontsize(15)
     prefix = "value ="
@@ -317,7 +323,12 @@ function _draw_graph(
     exam = false,
 )
     order = topological_order(graph.output)
-    positions, depth = _positions(order; width, height = height - 60)
+    positions, depth = _positions(
+        order;
+        width,
+        height = exam ? height : height - 60,
+        compact = exam,
+    )
     Luxor.background("white")
     if !exam
         Luxor.sethue("black")
@@ -360,8 +371,10 @@ function _draw_graph(
             halign = :center,
             valign = :middle,
         )
-        if frame.values[node] && node.value isa AbstractMatrix && length(node.value) <= 16
-            _draw_matrix_value(node.value, Luxor.Point(x, y + 13))
+        if frame.values[node] &&
+           node.value isa Union{AbstractVector,AbstractMatrix} &&
+           length(node.value) <= 16
+            _draw_array_value(node.value, Luxor.Point(x, y + 13))
             value_y = y + 13
         else
             value = frame.values[node] ? _fmt(node.value) : "?"
@@ -390,16 +403,26 @@ function _draw_graph(
     end
 end
 
+function _default_height(graph, exam)
+    exam || return 620
+    order = topological_order(graph.output)
+    depth = IdDict{eltype(order),Int}()
+    foreach(node -> _depth!(depth, node), order)
+    largest_level = maximum(d -> count(==(d), values(depth)), values(depth))
+    return 40 + 110largest_level
+end
+
 function _render(
     graph,
     frame,
     surface;
     width = 1100,
-    height = 620,
+    height = nothing,
     exam = false,
     path = "",
     scale = 1.0,
 )
+    height = isnothing(height) ? _default_height(graph, exam) : height
     canvas_width = surface == :png ? round(Int, scale * width) : scale * width
     canvas_height = surface == :png ? round(Int, scale * height) : scale * height
     drawing = Luxor.Drawing(canvas_width, canvas_height, surface, path)
@@ -413,10 +436,11 @@ function render_svg(
     graph::ExprGraph,
     frame::Frame;
     width = 1100,
-    height = 620,
+    height = nothing,
     exam = false,
     responsive = true,
 )
+    height = isnothing(height) ? _default_height(graph, exam) : height
     _render(graph, frame, :svg; width, height, exam)
     svg = Luxor.svgstring()
     if responsive
@@ -441,9 +465,10 @@ function save_png(
     frame::Frame;
     density = 180,
     width = 1600,
-    height = 620,
+    height = nothing,
     exam = false,
 )
+    height = isnothing(height) ? _default_height(graph, exam) : height
     scale = width / 1100
     _render(graph, frame, :png; width = 1100, height, exam, path, scale)
     return path

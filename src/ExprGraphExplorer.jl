@@ -290,10 +290,7 @@ function _positions(order; width = 1100, height = 560, compact = false)
             else
                 index * height / (length(level) + 1)
             end
-            positions[node] = (
-                100 + d * (width - 200) / max(maxdepth, 1),
-                y,
-            )
+            positions[node] = (100 + d * (width - 200) / max(maxdepth, 1), y)
         end
     end
     return positions, depth
@@ -323,12 +320,8 @@ function _draw_graph(
     exam = false,
 )
     order = topological_order(graph.output)
-    positions, depth = _positions(
-        order;
-        width,
-        height = exam ? height : height - 60,
-        compact = exam,
-    )
+    positions, depth =
+        _positions(order; width, height = exam ? height : height - 60, compact = exam)
     Luxor.background("white")
     if !exam
         Luxor.sethue("black")

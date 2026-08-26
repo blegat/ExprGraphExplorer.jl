@@ -29,42 +29,15 @@ function example(; x = 2.0, y = 3.0)
     return ExprGraph(output; names)
 end
 
-function _backward!(node::ScalarNode)
-    isnothing(node.op) && return
-    derivative = node.metadata.derivative
-    if node.op == :+
-        for arg in node.args
-            arg.metadata.derivative += derivative
-        end
-    elseif node.op == :- && length(node.args) == 2
-        node.args[1].metadata.derivative += derivative
-        node.args[2].metadata.derivative -= derivative
-    elseif node.op == :- && length(node.args) == 1
-        node.args[1].metadata.derivative -= derivative
-    elseif node.op == :* && length(node.args) == 2
-        node.args[1].metadata.derivative += derivative * node.args[2].value
-        node.args[2].metadata.derivative += derivative * node.args[1].value
-    elseif node.op == :/ && length(node.args) == 2
-        node.args[1].metadata.derivative += derivative / node.args[2].value
-        node.args[2].metadata.derivative -=
-            derivative * node.args[1].value / node.args[2].value^2
-    elseif node.op == :^ && length(node.args) == 2
-        base, exponent = node.args
-        base.metadata.derivative +=
-            derivative * exponent.value * base.value^(exponent.value - 1)
-    elseif node.op == :tanh
-        arg = only(node.args)
-        arg.metadata.derivative += derivative * (1 - tanh(arg.value)^2)
-    elseif node.op == :exp
-        arg = only(node.args)
-        arg.metadata.derivative += derivative * exp(arg.value)
-    elseif node.op == :log
-        arg = only(node.args)
-        arg.metadata.derivative += derivative / arg.value
-    else
-        error("Operator `$(node.op)` is not supported by the scalar reverse example")
+function ExprGraphExplorer.reverse(::typeof(+), node::ScalarNode, args::ScalarNode...)
+    for arg in args
+        arg.metadata.derivative += node.metadata.derivative
     end
-    return
+end
+
+function ExprGraphExplorer.reverse(::typeof(*), node::ScalarNode, x::ScalarNode, y::ScalarNode)
+    x.metadata.derivative += node.metadata.derivative * y.value
+    y.metadata.derivative += node.metadata.derivative * x.value
 end
 
 function backward!(output::ScalarNode)
@@ -74,7 +47,7 @@ function backward!(output::ScalarNode)
     end
     output.metadata.derivative = 1.0
     for node in reverse(order)
-        _backward!(node)
+        ExprGraphExplorer.reverse(node)
     end
     return output
 end
@@ -89,7 +62,7 @@ function frames(graph::ExprGraph)
     push!(result, capture_frame(graph, "Reverse pass: seed f̄ = 1"; active = graph.output))
     for node in reverse(order)
         isempty(node.args) && continue
-        _backward!(node)
+        ExprGraphExplorer.reverse(node)
         push!(
             result,
             capture_frame(

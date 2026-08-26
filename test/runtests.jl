@@ -29,6 +29,10 @@ EmptyMetadata(::Any) = EmptyMetadata()
     )
     @test ExprGraphExplorer._fmt([1.0, 2.0]) == "[1, 2]"
     @test ExprGraphExplorer._fmt([1.0 2.0; 3.0 4.0]) == "[1 2; 3 4]"
+
+    # Graph construction is independent of reverse-mode metadata. If no rule
+    # was provided for an operation, reverse dispatch reports its exact method.
+    @test_throws MethodError ExprGraphExplorer.reverse(x + y)
 end
 
 @testset "small array value union" begin

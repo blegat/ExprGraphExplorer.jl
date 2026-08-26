@@ -19,6 +19,10 @@ end
 
 const ScalarNode = ExprNode{Float64,ScalarReverseData}
 
+function ExprGraphExplorer.seed_metadata!(data::ScalarReverseData, is_output::Bool)
+    data.derivative = is_output ? 1.0 : 0.0
+end
+
 function example(; x = 2.0, y = 3.0)
     xnode = ScalarNode(x)
     ynode = ScalarNode(y)
@@ -29,13 +33,13 @@ function example(; x = 2.0, y = 3.0)
     return ExprGraph(output; names)
 end
 
-function ExprGraphExplorer.reverse(::typeof(+), node::ScalarNode, args::ScalarNode...)
+function ExprGraphExplorer.pullback!(::typeof(+), node::ScalarNode, args::ScalarNode...)
     for arg in args
         arg.metadata.derivative += node.metadata.derivative
     end
 end
 
-function ExprGraphExplorer.reverse(
+function ExprGraphExplorer.pullback!(
     ::typeof(*),
     node::ScalarNode,
     x::ScalarNode,
@@ -44,19 +48,6 @@ function ExprGraphExplorer.reverse(
     x.metadata.derivative += node.metadata.derivative * y.value
     y.metadata.derivative += node.metadata.derivative * x.value
 end
-
-function backward!(output::ScalarNode, order)
-    for node in order
-        node.metadata.derivative = 0.0
-    end
-    output.metadata.derivative = 1.0
-    for index in Iterators.reverse(eachindex(order))
-        ExprGraphExplorer.reverse(order[index])
-    end
-    return output
-end
-
-backward!(output::ScalarNode) = backward!(output, topological_order(output))
 
 function frames(graph::ExprGraph)
     result = forward_frames(graph)
@@ -68,7 +59,7 @@ function frames(graph::ExprGraph)
     push!(result, capture_frame(graph, "Reverse pass: seed f̄ = 1"; active = graph.output))
     for node in reverse(order)
         isempty(node.args) && continue
-        ExprGraphExplorer.reverse(node)
+        ExprGraphExplorer.pullback!(node)
         push!(
             result,
             capture_frame(

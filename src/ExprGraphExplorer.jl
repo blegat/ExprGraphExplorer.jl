@@ -13,7 +13,9 @@ export ExprNode,
     metadata,
     convert_value,
     metadata_rows,
-    reverse,
+    backward!,
+    pullback!,
+    seed_metadata!,
     topological_order,
     forward_frames,
     capture_frame,
@@ -178,10 +180,10 @@ function topological_order(output::N) where {N<:ExprNode}
 end
 
 """
-    reverse(node::ExprNode)
+    pullback!(node::ExprNode)
 
 Dispatch one node of a reverse pass to an operation-specific method such as
-`reverse(::typeof(+), output, x, y)`. Packages attaching derivative metadata
+`pullback!(::typeof(+), output, x, y)`. Packages attaching derivative metadata
 implement those methods. A missing derivative rule is therefore reported as
 a `MethodError` with the corresponding Julia operator and node types.
 
@@ -189,45 +191,111 @@ Specialized metadata may overload this node-level method to bypass operation
 dispatch, for example when local Jacobians were stored during the forward
 pass.
 """
-function Base.reverse(node::ExprNode)
+function pullback!(node::ExprNode)
     isnothing(node.op) && return node
     if node.op == :+
         if length(node.args) == 1
-            reverse(+, node, node.args[1])
+            pullback!(+, node, node.args[1])
         else
-            reverse(+, node, node.args[1], node.args[2])
+            pullback!(+, node, node.args[1], node.args[2])
         end
     elseif node.op == :-
         if length(node.args) == 1
-            reverse(-, node, node.args[1])
+            pullback!(-, node, node.args[1])
         else
-            reverse(-, node, node.args[1], node.args[2])
+            pullback!(-, node, node.args[1], node.args[2])
         end
     elseif node.op == :*
         if length(node.args) == 1
-            reverse(*, node, node.args[1])
+            pullback!(*, node, node.args[1])
         else
-            reverse(*, node, node.args[1], node.args[2])
+            pullback!(*, node, node.args[1], node.args[2])
         end
     elseif node.op == :/
-        reverse(/, node, node.args[1], node.args[2])
+        pullback!(/, node, node.args[1], node.args[2])
     elseif node.op == :^
-        reverse(^, node, node.args[1], node.args[2])
+        pullback!(^, node, node.args[1], node.args[2])
     elseif node.op == :tanh
-        reverse(tanh, node, node.args[1])
+        pullback!(tanh, node, node.args[1])
     elseif node.op == :exp
-        reverse(exp, node, node.args[1])
+        pullback!(exp, node, node.args[1])
     elseif node.op == :log
-        reverse(log, node, node.args[1])
+        pullback!(log, node, node.args[1])
     elseif node.op == :sqrt
-        reverse(sqrt, node, node.args[1])
+        pullback!(sqrt, node, node.args[1])
+    elseif node.op == :sum
+        pullback!(sum, node, node.args[1])
+    elseif node.op == :sum_dims
+        pullback!(sum, node, node.args[1], node.args[2])
+    elseif node.op == :maximum
+        pullback!(maximum, node, node.args[1])
+    elseif node.op == :maximum_dims
+        pullback!(maximum, node, node.args[1], node.args[2])
+    elseif node.op == :adjoint
+        pullback!(LinearAlgebra.adjoint, node, node.args[1])
+    elseif node.op == :hcat
+        pullback!(hcat, node, node.args...)
+    elseif node.op == :getindex_rows
+        pullback!(getindex, node, node.args[1], node.args[2])
+    elseif node.op == _broadcast_symbol(+)
+        _broadcast_pullback!(+, node)
+    elseif node.op == _broadcast_symbol(-)
+        _broadcast_pullback!(-, node)
+    elseif node.op == _broadcast_symbol(*)
+        _broadcast_pullback!(*, node)
+    elseif node.op == _broadcast_symbol(/)
+        _broadcast_pullback!(/, node)
+    elseif node.op == _broadcast_symbol(^)
+        _broadcast_pullback!(^, node)
+    elseif node.op == _broadcast_symbol(tanh)
+        _broadcast_pullback!(tanh, node)
+    elseif node.op == _broadcast_symbol(exp)
+        _broadcast_pullback!(exp, node)
+    elseif node.op == _broadcast_symbol(log)
+        _broadcast_pullback!(log, node)
+    elseif node.op == _broadcast_symbol(sqrt)
+        _broadcast_pullback!(sqrt, node)
+    elseif node.op == _broadcast_symbol(min)
+        _broadcast_pullback!(min, node)
+    elseif node.op == _broadcast_symbol(max)
+        _broadcast_pullback!(max, node)
     else
-        throw(
-            ArgumentError("reverse dispatch is not implemented for operation `$(node.op)`"),
-        )
+        pullback!(Val(node.op), node, node.args...)
     end
     return node
 end
+
+function _broadcast_pullback!(op, node)
+    if length(node.args) == 1
+        pullback!(Base.broadcasted, op, node, node.args[1])
+    else
+        pullback!(Base.broadcasted, op, node, node.args[1], node.args[2])
+    end
+    return node
+end
+
+"""Initialize user-defined metadata for a backward pass."""
+function seed_metadata! end
+
+"""
+    backward!(output::ExprNode[, order])
+
+Run a complete backward pass. Metadata types implement
+`seed_metadata!(metadata, is_output)`, while operation-specific propagation is
+provided through `pullback!` methods. Passing a precomputed topological order
+makes the pass allocation-free when those methods are allocation-free.
+"""
+function backward!(output::ExprNode, order)
+    for node in order
+        seed_metadata!(node.metadata, node === output)
+    end
+    for index in Iterators.reverse(eachindex(order))
+        pullback!(order[index])
+    end
+    return output
+end
+
+backward!(output::ExprNode) = backward!(output, topological_order(output))
 
 struct ExprGraph{T,M}
     output::ExprNode{T,M}

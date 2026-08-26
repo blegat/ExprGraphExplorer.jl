@@ -40,17 +40,18 @@ function ExprGraphExplorer.reverse(::typeof(*), node::ScalarNode, x::ScalarNode,
     y.metadata.derivative += node.metadata.derivative * x.value
 end
 
-function backward!(output::ScalarNode)
-    order = topological_order(output)
+function backward!(output::ScalarNode, order)
     for node in order
         node.metadata.derivative = 0.0
     end
     output.metadata.derivative = 1.0
-    for node in reverse(order)
-        ExprGraphExplorer.reverse(node)
+    for index in Iterators.reverse(eachindex(order))
+        ExprGraphExplorer.reverse(order[index])
     end
     return output
 end
+
+backward!(output::ScalarNode) = backward!(output, topological_order(output))
 
 function frames(graph::ExprGraph)
     result = forward_frames(graph)

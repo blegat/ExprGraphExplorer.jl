@@ -52,11 +52,18 @@ using .ScalarReverseExample
 
 @testset "scalar reverse example" begin
     graph = ScalarReverseExample.example()
-    ScalarReverseExample.backward!(graph.output)
+    order = topological_order(graph.output)
+    ScalarReverseExample.backward!(graph.output, order)
     derivatives =
         Dict(graph.names[node] => node.metadata.derivative for node in keys(graph.names))
     @test derivatives["x"] == 48
     @test derivatives["y"] == 28
     @test derivatives["s₁"] == 14
     @test derivatives["s₂"] == 6
+
+    # Compilation and topology discovery are deliberately outside the
+    # measurement; repeated reverse sweeps over a recorded graph must allocate
+    # no memory.
+    ScalarReverseExample.backward!(graph.output, order)
+    @test @allocated(ScalarReverseExample.backward!(graph.output, order)) == 0
 end

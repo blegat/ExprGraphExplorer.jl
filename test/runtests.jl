@@ -32,7 +32,7 @@ EmptyMetadata(::Any) = EmptyMetadata()
 
     # Graph construction is independent of reverse-mode metadata. If no rule
     # was provided for an operation, reverse dispatch reports its exact method.
-    @test_throws MethodError ExprGraphExplorer.reverse(x + y)
+    @test_throws MethodError ExprGraphExplorer.pullback!(x + y)
 end
 
 @testset "small array value union" begin

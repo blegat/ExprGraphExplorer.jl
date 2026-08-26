@@ -2,8 +2,8 @@
 
 `ExprGraphExplorer.jl` constructs expression graphs by operator overloading,
 propagates primal Julia values through them, and provides step-by-step graph
-visualization. The package is deliberately independent of automatic
-differentiation: applications attach their own metadata to every node.
+visualization. Applications attach their own metadata to every node; optional
+reverse-pass utilities route operations without prescribing an adjoint type.
 
 ## Pluto showcase
 
@@ -37,21 +37,33 @@ graph = ExprGraph(x * y; names=IdDict(x => "x", y => "y"))
 
 ## Defining reverse rules
 
-`ExprGraphExplorer.reverse(node)` translates the operation symbol stored in a
+`ExprGraphExplorer.pullback!(node)` translates the operation symbol stored in a
 node into ordinary Julia multiple dispatch. For example, scalar reverse-mode
 metadata can define
 
 ```julia
-function ExprGraphExplorer.reverse(::typeof(*), output::MyNode, x::MyNode, y::MyNode)
+function ExprGraphExplorer.pullback!(::typeof(*), output::MyNode, x::MyNode, y::MyNode)
     # Propagate output metadata to x.metadata and y.metadata.
 end
 ```
 
 The package contains the small, explicit operation switch; applications only
-provide the propagation rules. Calling `reverse(node)` without a matching rule
+provide the propagation rules. Calling `pullback!(node)` without a matching rule
 throws a `MethodError` showing exactly which operator and node signature is
 missing. Metadata that stores a pullback or local Jacobians may instead
-specialize `ExprGraphExplorer.reverse(node::MyNode)` and bypass the switch.
+specialize `ExprGraphExplorer.pullback!(node::MyNode)` and bypass the switch.
+
+A complete reverse pass is provided by `backward!(output)`. Metadata defines
+how adjoints are initialized:
+
+```julia
+function ExprGraphExplorer.seed_metadata!(data::MyMetadata, is_output::Bool)
+    # Initialize the metadata, using a nonzero reverse seed iff `is_output`.
+end
+```
+
+For repeated passes, `backward!(output, topological_order(output))` accepts a
+prepared order and can be allocation-free.
 
 Rendering and SVG, PNG, and EPS export use Luxor and its Cairo artifact. Small
 matrix values are typeset by Typstry and its Typst artifact. No separately

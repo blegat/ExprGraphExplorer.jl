@@ -13,6 +13,7 @@ export ExprNode,
     metadata,
     convert_value,
     metadata_rows,
+    reverse,
     topological_order,
     forward_frames,
     capture_frame,
@@ -174,6 +175,58 @@ function topological_order(output::N) where {N<:ExprNode}
     end
     visit(output)
     return order
+end
+
+"""
+    reverse(node::ExprNode)
+
+Dispatch one node of a reverse pass to an operation-specific method such as
+`reverse(::typeof(+), output, x, y)`. Packages attaching derivative metadata
+implement those methods. A missing derivative rule is therefore reported as
+a `MethodError` with the corresponding Julia operator and node types.
+
+Specialized metadata may overload this node-level method to bypass operation
+dispatch, for example when local Jacobians were stored during the forward
+pass.
+"""
+function Base.reverse(node::ExprNode)
+    isnothing(node.op) && return node
+    if node.op == :+
+        if length(node.args) == 1
+            reverse(+, node, node.args[1])
+        else
+            reverse(+, node, node.args[1], node.args[2])
+        end
+    elseif node.op == :-
+        if length(node.args) == 1
+            reverse(-, node, node.args[1])
+        else
+            reverse(-, node, node.args[1], node.args[2])
+        end
+    elseif node.op == :*
+        if length(node.args) == 1
+            reverse(*, node, node.args[1])
+        else
+            reverse(*, node, node.args[1], node.args[2])
+        end
+    elseif node.op == :/
+        reverse(/, node, node.args[1], node.args[2])
+    elseif node.op == :^
+        reverse(^, node, node.args[1], node.args[2])
+    elseif node.op == :tanh
+        reverse(tanh, node, node.args[1])
+    elseif node.op == :exp
+        reverse(exp, node, node.args[1])
+    elseif node.op == :log
+        reverse(log, node, node.args[1])
+    elseif node.op == :sqrt
+        reverse(sqrt, node, node.args[1])
+    else
+        throw(
+            ArgumentError("reverse dispatch is not implemented for operation `$(node.op)`"),
+        )
+    end
+    return node
 end
 
 struct ExprGraph{T,M}

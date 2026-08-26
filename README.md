@@ -35,6 +35,24 @@ y = MyNode(3.0)
 graph = ExprGraph(x * y; names=IdDict(x => "x", y => "y"))
 ```
 
+## Defining reverse rules
+
+`ExprGraphExplorer.reverse(node)` translates the operation symbol stored in a
+node into ordinary Julia multiple dispatch. For example, scalar reverse-mode
+metadata can define
+
+```julia
+function ExprGraphExplorer.reverse(::typeof(*), output::MyNode, x::MyNode, y::MyNode)
+    # Propagate output metadata to x.metadata and y.metadata.
+end
+```
+
+The package contains the small, explicit operation switch; applications only
+provide the propagation rules. Calling `reverse(node)` without a matching rule
+throws a `MethodError` showing exactly which operator and node signature is
+missing. Metadata that stores a pullback or local Jacobians may instead
+specialize `ExprGraphExplorer.reverse(node::MyNode)` and bypass the switch.
+
 Rendering and SVG, PNG, and EPS export use Luxor and its Cairo artifact. Small
 matrix values are typeset by Typstry and its Typst artifact. No separately
 installed graphics or typesetting executable is required.

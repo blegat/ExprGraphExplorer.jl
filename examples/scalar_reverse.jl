@@ -35,7 +35,12 @@ function ExprGraphExplorer.reverse(::typeof(+), node::ScalarNode, args::ScalarNo
     end
 end
 
-function ExprGraphExplorer.reverse(::typeof(*), node::ScalarNode, x::ScalarNode, y::ScalarNode)
+function ExprGraphExplorer.reverse(
+    ::typeof(*),
+    node::ScalarNode,
+    x::ScalarNode,
+    y::ScalarNode,
+)
     x.metadata.derivative += node.metadata.derivative * y.value
     y.metadata.derivative += node.metadata.derivative * x.value
 end

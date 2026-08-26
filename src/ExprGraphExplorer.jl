@@ -222,7 +222,9 @@ function Base.reverse(node::ExprNode)
     elseif node.op == :sqrt
         reverse(sqrt, node, node.args[1])
     else
-        throw(ArgumentError("reverse dispatch is not implemented for operation `$(node.op)`"))
+        throw(
+            ArgumentError("reverse dispatch is not implemented for operation `$(node.op)`"),
+        )
     end
     return node
 end

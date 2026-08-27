@@ -1,5 +1,10 @@
 # ExprGraphExplorer.jl
 
+| **Build Status** |
+|:----------------:|
+| [![Build Status][build-img]][build-url] [![Codecov branch][codecov-img]][codecov-url] |
+
+
 `ExprGraphExplorer.jl` constructs expression graphs by operator overloading,
 propagates primal Julia values through them, and provides step-by-step graph
 visualization. Applications attach their own metadata to every node; optional
@@ -68,3 +73,8 @@ prepared order and can be allocation-free.
 Rendering and SVG, PNG, and EPS export use Luxor and its Cairo artifact. Small
 matrix values are typeset by Typstry and its Typst artifact. No separately
 installed graphics or typesetting executable is required.
+
+[build-img]: https://github.com/blegat/ExprGraphExplorer.jl/actions/workflows/ci.yml/badge.svg?branch=main
+[build-url]: https://github.com/blegat/ExprGraphExplorer.jl/actions?query=workflow%3ACI
+[codecov-img]: https://codecov.io/gh/blegat/ExprGraphExplorer.jl/branch/main/graph/badge.svg
+[codecov-url]: https://codecov.io/gh/blegat/ExprGraphExplorer.jl/branch/main
